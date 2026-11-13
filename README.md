@@ -1,7 +1,7 @@
 # KI-Werkstatt
 
 Kinder trainieren im Browser eine eigene KI, die Bilder oder Körperhaltungen erkennt. Läuft am iPad (Safari), ohne Anmeldung und ohne Code.
-Ein Bildungsprojekt im Design von MINT2Go. Der Aufbau (Klassen, Üben, Ausprobieren) ist dem Werkzeug „Teachable Machine“ nachempfunden. Die KI-Werkstatt ist nicht mit Teachable Machine oder Google verbunden.
+Ein Bildungsprojekt im Design von MINT2Go. Die KI-Werkstatt ist nicht mit Google verbunden.
 
 **Ausprobieren:** https://makingvs.github.io/ki-werkstatt/
 
@@ -35,6 +35,6 @@ Beim Start eines Projekts lädt sie Programme (jsDelivr) und ein fertiges Erkenn
 - Der selbst geschriebene Quelltext ist noch nicht unter einer Open-Source-Lizenz freigegeben. Alle Rechte vorbehalten.
 - Geladene Bausteine: TensorFlow.js, MobileNet und PoseNet (Apache-2.0, © Google LLC). Das MobileNet-Modell wurde mit ImageNet trainiert, dessen Bedingungen nur nicht-kommerzielle Forschung und Bildung erlauben.
 - Die kleinen Symbole in der App sind Material Icons von Google (Apache-2.0, © Google LLC).
-- Die KI-Werkstatt ist nicht mit der Scratch Foundation, TurboWarp, Teachable Machine oder Google verbunden und wird von ihnen nicht unterstützt.
+- Die KI-Werkstatt ist nicht mit der Scratch Foundation, TurboWarp oder Google verbunden und wird von ihnen nicht unterstützt.
 - Logo und Erscheinungsbild gehören MINT2Go.
 - Alle Angaben mit Quellen stehen in der App unter Menü → „Info, Lizenzen und Datenschutz“.

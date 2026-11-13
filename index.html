@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#f3f6ee">
 <title>KI-Werkstatt</title>
 <style>
-  /* Aufbau und Stil sind dem Werkzeug „Teachable Machine“ von Google nachempfunden (Klassen | Training | Vorschau). */
+  /* Aufbau: Klassen | Kamera | Aufnehmen, dann Üben, dann Ausprobieren. */
   /* Farben aus dem MINT2Go-Logo: Grün #99c328, Pink #e31274, Orange #f29d35, Cyan #3abbea, Gelb #f7be3c, Blaugrau #4e5a7d */
   /* Jeder Schritt passt auf einen iPad-Bildschirm, ohne dass die Seite scrollt. Schrift und Knöpfe sind absichtlich groß. */
   :root{
@@ -196,7 +196,7 @@
   .pm .head{font-size:28px;font-weight:800}
   #trainProg{width:min(100%,520px);display:grid;gap:12px;justify-items:center}
   .think{display:flex;align-items:center;gap:14px;color:var(--blue-d);font-weight:800;font-size:26px}
-  .spin{width:38px;height:38px;border-radius:50%;border:5px solid var(--blue-l);border-top-color:var(--brand-d);animation:rot .9s linear infinite;flex:none}
+  .spin{width:38px;height:38px;border-radius:50%;border:5px solid var(--blue-l);border-top-color:var(--brand-d);animation:rot .9s linear infinite;flex:none;will-change:transform}
   @keyframes rot{to{transform:rotate(360deg)}}
   .dots i{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--brand-d);margin-left:4px;animation:bounce 1s infinite}
   .dots i:nth-child(2){animation-delay:.15s}.dots i:nth-child(3){animation-delay:.3s}
@@ -379,7 +379,7 @@
     </button>
   </div>
   <button class="btn sec" id="btnLoadModel" type="button">Gespeichertes Modell hochladen</button>
-  <p class="legal">Ein Bildungsprojekt im Design von MINT2Go, <b>nicht mit Teachable Machine oder Google verbunden</b>. Alles bleibt auf deinem Gerät, es werden keine Bilder verschickt.<br>
+  <p class="legal">Ein Bildungsprojekt im Design von MINT2Go, <b>nicht mit Google verbunden</b>. Alles bleibt auf deinem Gerät, es werden keine Bilder verschickt.<br>
     <button class="linkbtn" id="btnInfoStart" type="button">Info, Lizenzen und Datenschutz</button> · <a href="scratch.html">So geht's mit Scratch (TurboWarp)</a></p>
 </main>
 
@@ -1186,7 +1186,7 @@
     openDialog('<div class="top"><h2>Einstellungen fürs Üben</h2>' + closeBtn() + '</div>' +
       '<div class="f">' +
       '<label><span>Runden (Epochen)</span><input type="number" id="advEpochs" min="1" max="500" step="1"></label>' +
-      '<p class="note">So oft sieht die KI alle Beispiele. Klappt es noch nicht gut, erhöhe diese Zahl.</p>' +
+      '<p class="note">So oft sieht die KI alle Beispiele, höchstens. Macht sie schon alles sicher richtig, hört sie nach mindestens 15 Runden früher auf. Klappt es noch nicht gut, erhöhe diese Zahl.</p>' +
       '<label><span>Päckchengröße (Batch)</span><input type="number" id="advBatch" min="1" max="256" step="1"></label>' +
       '<p class="note">So viele Beispiele schaut sich die KI auf einmal an. Das musst du meistens nicht ändern.</p>' +
       '<label><span>Lernschritt (Lernrate)</span><input type="number" id="advLr" min="0.0001" max="0.1" step="0.0001"></label>' +
@@ -1207,49 +1207,164 @@
     $('#doneTxt').textContent = va !== null ? 'Beim Üben richtig: ' + pc + ' %. Beim Test mit neuen Beispielen: ' + Math.round(va * 100) + ' %.' : 'Beim Üben richtig: ' + pc + ' %. Probiere die KI jetzt aus.';
   }
 
-  async function train(){
-    if (S.training || trainProblem()) return;
-    var act = active(), C = act.length, dim = S.dim, adv = readAdv();
-    S.training = true; S.stopReq = false; stopRec(); refreshTrain();
-    $('#trainProg').hidden = false; setProg(0, 'Trainingsdaten werden vorbereitet …');
-    await tf.nextFrame();
-    var Xtr = [], Ytr = [], Xte = [], Yte = [];
+  /* ================= Das kleine Netz (reines JavaScript) ================= */
+  // Die KI besteht aus zwei Schichten: 100 Neuronen (relu) und eine Ausgabe (softmax). Das Netz ist so klein, dass es in
+  // normalem JavaScript in Sekunden übt. Mit TensorFlow.js musste der Browser dafür erst Grafikprogramme (Shader) übersetzen.
+  // Das dauerte am iPad viele Sekunden, in denen scheinbar nichts passierte. Die Bildmerkmale (MobileNet, PoseNet) kommen weiter von TensorFlow.js.
+  var HID = 100;
+  function nextFrame(){
+    return new Promise(function(res){
+      var done = false;
+      function fin(){ if (!done){ done = true; res(); } }
+      requestAnimationFrame(fin); setTimeout(fin, 60);   // Die Zeitschaltung hilft, wenn der Tab im Hintergrund ist
+    });
+  }
+  function newNet(dim, C){
+    var net = { dim: dim, C: C, step: 0, W1: new Float32Array(dim * HID), b1: new Float32Array(HID), W2: new Float32Array(HID * C), b2: new Float32Array(C) };
+    var l1 = Math.sqrt(6 / (dim + HID)), l2 = Math.sqrt(6 / (HID + C)), i;
+    for (i = 0; i < net.W1.length; i++) net.W1[i] = (Math.random() * 2 - 1) * l1;
+    for (i = 0; i < net.W2.length; i++) net.W2[i] = (Math.random() * 2 - 1) * l2;
+    net.opt = { mW1: new Float32Array(net.W1.length), vW1: new Float32Array(net.W1.length), mb1: new Float32Array(HID), vb1: new Float32Array(HID),
+      mW2: new Float32Array(net.W2.length), vW2: new Float32Array(net.W2.length), mb2: new Float32Array(C), vb2: new Float32Array(C) };
+    net.dispose = function(){};
+    return net;
+  }
+  // Vorwärtsrechnung für ein Beispiel. h und z sind Zwischenspeicher, am Ende stehen in z die Wahrscheinlichkeiten.
+  // Je vier Eingaben werden zusammen gerechnet, das ist deutlich schneller.
+  function netForward(net, x, xo, h, z){
+    var D = net.dim, C = net.C, W1 = net.W1, W2 = net.W2, b1 = net.b1, b2 = net.b2, j, k, c, mx, s, wo;
+    for (j = 0; j < HID; j++) h[j] = b1[j];
+    for (k = 0; k + 3 < D; k += 4){
+      var a0 = x[xo + k], a1 = x[xo + k + 1], a2 = x[xo + k + 2], a3 = x[xo + k + 3]; wo = k * HID;
+      for (j = 0; j < HID; j++) h[j] += a0 * W1[wo + j] + a1 * W1[wo + HID + j] + a2 * W1[wo + 2 * HID + j] + a3 * W1[wo + 3 * HID + j];
+    }
+    for (; k < D; k++){ var xk = x[xo + k]; wo = k * HID; for (j = 0; j < HID; j++) h[j] += xk * W1[wo + j]; }
+    for (c = 0; c < C; c++) z[c] = b2[c];
+    for (j = 0; j < HID; j++){ if (h[j] <= 0){ h[j] = 0; continue; } var hj = h[j], vo = j * C; for (c = 0; c < C; c++) z[c] += hj * W2[vo + c]; }
+    mx = z[0]; for (c = 1; c < C; c++) if (z[c] > mx) mx = z[c];
+    s = 0; for (c = 0; c < C; c++){ z[c] = Math.exp(z[c] - mx); s += z[c]; }
+    for (c = 0; c < C; c++) z[c] /= s;
+  }
+  function netPredict(net, x){ var z = new Float32Array(net.C); netForward(net, x, 0, new Float32Array(HID), z); return z; }
+  function netBest(net, x){ var p = netPredict(net, x), b = 0, c; for (c = 1; c < p.length; c++) if (p[c] > p[b]) b = c; return b; }
+  // Adam wie in Keras und TensorFlow.js (mit Bias-Korrektur)
+  function adamStep(p, g, m, v, lr, scale, t){
+    var b1 = 0.9, b2 = 0.999, eps = 1e-7, c1 = 1 - Math.pow(b1, t), c2 = 1 - Math.pow(b2, t), i, gi;
+    for (i = 0; i < p.length; i++){
+      gi = g[i] * scale; m[i] = b1 * m[i] + (1 - b1) * gi; v[i] = b2 * v[i] + (1 - b2) * gi * gi;
+      p[i] -= lr * (m[i] / c1) / (Math.sqrt(v[i] / c2) + eps);
+    }
+  }
+  function netEval(net, d){
+    var h = new Float32Array(HID), z = new Float32Array(net.C), loss = 0, ok = 0, i, c, b;
+    for (i = 0; i < d.n; i++){
+      netForward(net, d.X, i * net.dim, h, z); b = 0; for (c = 1; c < net.C; c++) if (z[c] > z[b]) b = c;
+      if (b === d.Y[i]) ok++; loss -= Math.log(Math.max(z[d.Y[i]], 1e-7));
+    }
+    return { acc: ok / d.n, loss: loss / d.n };
+  }
+  // Übt das Netz: opt.epochs Durchgänge über alle Beispiele in kleinen Päckchen (Mini-Batches). Nach jeder Epoche wird onEpoch
+  // aufgerufen. Zwischendurch gibt die Funktion der Seite Zeit zum Zeichnen, damit sich Fortschrittsanzeige und Drehkreis bewegen.
+  async function trainNet(net, data, val, opt, onEpoch){
+    var D = net.dim, C = net.C, n = data.n, X = data.X, Y = data.Y, B = Math.max(1, Math.min(opt.batch, n)), o = net.opt;
+    var W1 = net.W1, b1 = net.b1, W2 = net.W2, b2 = net.b2;
+    var gW1 = new Float32Array(W1.length), gb1 = new Float32Array(HID), gW2 = new Float32Array(W2.length), gb2 = new Float32Array(C);
+    var ZX = new Float32Array(D), z = new Float32Array(C), calm = 0;
+    var h0 = new Float32Array(HID), h1 = new Float32Array(HID), h2 = new Float32Array(HID), h3 = new Float32Array(HID);
+    var d0 = new Float32Array(HID), d1 = new Float32Array(HID), d2 = new Float32Array(HID), d3 = new Float32Array(HID);
+    var order = [], i, ep, lastYield = performance.now();
+    for (i = 0; i < n; i++) order.push(i);
+    for (ep = 0; ep < opt.epochs; ep++){
+      shuffle(order);
+      var lossSum = 0, correct = 0, s0, s1, q0, j, k, c, L;
+      for (s0 = 0; s0 < n; s0 += B){
+        s1 = Math.min(n, s0 + B);
+        gW1.fill(0); gb1.fill(0); gW2.fill(0); gb2.fill(0);
+        // Je vier Beispiele werden gemeinsam gerechnet: Die große Zahlentabelle W1 wird dann nur einmal gelesen. Leere Plätze zeigen auf Nullen.
+        for (q0 = s0; q0 < s1; q0 += 4){
+          var cnt = Math.min(4, s1 - q0), xo0 = order[q0] * D, X1 = ZX, X2 = ZX, X3 = ZX, xo1 = 0, xo2 = 0, xo3 = 0;
+          if (cnt > 1){ X1 = X; xo1 = order[q0 + 1] * D; }
+          if (cnt > 2){ X2 = X; xo2 = order[q0 + 2] * D; }
+          if (cnt > 3){ X3 = X; xo3 = order[q0 + 3] * D; }
+          h0.set(b1); h1.set(b1); h2.set(b1); h3.set(b1);
+          for (k = 0; k < D; k++){
+            var x0 = X[xo0 + k], x1 = X1[xo1 + k], x2 = X2[xo2 + k], x3 = X3[xo3 + k], wo = k * HID;
+            for (j = 0; j < HID; j++){ var w = W1[wo + j]; h0[j] += x0 * w; h1[j] += x1 * w; h2[j] += x2 * w; h3[j] += x3 * w; }
+          }
+          for (L = 0; L < cnt; L++){
+            var h = L === 0 ? h0 : (L === 1 ? h1 : (L === 2 ? h2 : h3)), dh = L === 0 ? d0 : (L === 1 ? d1 : (L === 2 ? d2 : d3)), y = Y[order[q0 + L]], best = 0, mx, sm;
+            for (c = 0; c < C; c++) z[c] = b2[c];
+            for (j = 0; j < HID; j++){ if (h[j] <= 0){ h[j] = 0; continue; } var hj = h[j], vo = j * C; for (c = 0; c < C; c++) z[c] += hj * W2[vo + c]; }
+            mx = z[0]; for (c = 1; c < C; c++) if (z[c] > mx) mx = z[c];
+            sm = 0; for (c = 0; c < C; c++){ z[c] = Math.exp(z[c] - mx); sm += z[c]; }
+            for (c = 0; c < C; c++) z[c] /= sm;
+            for (c = 1; c < C; c++) if (z[c] > z[best]) best = c;
+            if (best === y) correct++;
+            lossSum -= Math.log(Math.max(z[y], 1e-7));
+            z[y] -= 1;                                         // jetzt steht in z der Fehler der Ausgabe (Wahrscheinlichkeit minus richtige Antwort)
+            for (c = 0; c < C; c++) gb2[c] += z[c];
+            for (j = 0; j < HID; j++){
+              if (h[j] <= 0){ dh[j] = 0; continue; }
+              var hv = h[j], vo2 = j * C, acc = 0;
+              for (c = 0; c < C; c++){ gW2[vo2 + c] += hv * z[c]; acc += W2[vo2 + c] * z[c]; }
+              dh[j] = acc; gb1[j] += acc;
+            }
+          }
+          for (k = 0; k < D; k++){
+            var u0 = X[xo0 + k], u1 = X1[xo1 + k], u2 = X2[xo2 + k], u3 = X3[xo3 + k], go = k * HID;
+            for (j = 0; j < HID; j++) gW1[go + j] += u0 * d0[j] + u1 * d1[j] + u2 * d2[j] + u3 * d3[j];
+          }
+        }
+        net.step++;
+        var sc = 1 / (s1 - s0);
+        adamStep(W1, gW1, o.mW1, o.vW1, opt.lr, sc, net.step); adamStep(b1, gb1, o.mb1, o.vb1, opt.lr, sc, net.step);
+        adamStep(W2, gW2, o.mW2, o.vW2, opt.lr, sc, net.step); adamStep(b2, gb2, o.mb2, o.vb2, opt.lr, sc, net.step);
+      }
+      var m = { acc: correct / n, loss: lossSum / n, vacc: null, vloss: null };
+      if (val && val.n){ var ev = netEval(net, val); m.vacc = ev.acc; m.vloss = ev.loss; }
+      if (onEpoch) onEpoch(ep, m);
+      if (opt.stop && opt.stop()) break;
+      // Macht die KI schon alles sicher richtig, hört sie früher auf (spart Zeit, mindestens 15 Runden)
+      if (opt.early){ calm = (m.acc >= 0.99 && m.loss < 0.03) ? calm + 1 : 0; if (calm >= 3 && ep >= 14) break; }
+      if (!opt.noYield && performance.now() - lastYield > 30){ await nextFrame(); lastYield = performance.now(); }
+    }
+  }
+  // Teilt die Beispiele der aktiven Klassen in Üben (85 %) und Test (15 %), rechnet sie auf gleiche Größe um und packt sie in Zahlenfelder.
+  function prepareData(act){
+    var dim = S.dim, i, Xtr = [], Ytr = [], Xte = [], Yte = [];
     act.forEach(function(c, ci){
       var idx = shuffle(c.ex.map(function(_, k){ return k; })), n = idx.length;
       var nt = n >= 6 ? Math.max(1, Math.round(n * 0.15)) : 0;
       idx.forEach(function(k, j){ if (j < nt){ Xte.push(c.ex[k].f); Yte.push(ci); } else { Xtr.push(c.ex[k].f); Ytr.push(ci); } });
     });
-    var mu = new Float32Array(dim), i;
+    var mu = new Float32Array(dim);
     Xtr.forEach(function(f){ for (i = 0; i < dim; i++) mu[i] += f[i]; });
     for (i = 0; i < dim; i++) mu[i] /= Xtr.length;
     var v = 0; Xtr.forEach(function(f){ for (i = 0; i < dim; i++){ var d = f[i] - mu[i]; v += d * d; } });
     var sigma = Math.sqrt(v / (Xtr.length * dim)) || 1;
     function norm(f){ var o = new Float32Array(dim); for (var q = 0; q < dim; q++) o[q] = (f[q] - mu[q]) / sigma; return o; }
-    function flat(arr){ var o = new Float32Array(arr.length * dim); arr.forEach(function(f, k){ o.set(norm(f), k * dim); }); return o; }
-    var xs = tf.tensor2d(flat(Xtr), [Xtr.length, dim]), ys = tf.oneHot(tf.tensor1d(Ytr, 'int32'), C).cast('float32');
-    var val = Xte.length ? [tf.tensor2d(flat(Xte), [Xte.length, dim]), tf.oneHot(tf.tensor1d(Yte, 'int32'), C).cast('float32')] : null;
-    var m = tf.sequential();
-    m.add(tf.layers.dense({ units: 100, activation: 'relu', inputShape: [dim] }));
-    m.add(tf.layers.dense({ units: C, activation: 'softmax' }));
-    m.compile({ optimizer: tf.train.adam(adv.lr), loss: 'categoricalCrossentropy', metrics: ['accuracy'] });
+    function pack(arr, ys){ var X = new Float32Array(arr.length * dim), Y = new Int32Array(arr.length); arr.forEach(function(f, k){ X.set(norm(f), k * dim); Y[k] = ys[k]; }); return { X: X, Y: Y, n: arr.length }; }
+    return { mu: mu, sigma: sigma, norm: norm, data: pack(Xtr, Ytr), val: Xte.length ? pack(Xte, Yte) : null, test: { X: Xte.map(norm), Y: Yte }, order: act.map(function(c){ return c.id; }) };
+  }
+
+  async function train(){
+    if (S.training || trainProblem()) return;
+    var act = active(), C = act.length, adv = readAdv();
+    S.training = true; S.stopReq = false; stopRec(); refreshTrain();
+    $('#trainProg').hidden = false; setProg(0, 'Die KI bereitet sich vor …');
+    await nextFrame();                       // Erst zeigen, dass es losgeht, dann rechnen
+    var P = prepareData(act), net = newNet(S.dim, C);
     S.hist = { acc: [], vacc: [], loss: [], vloss: [] };
     try {
-      await m.fit(xs, ys, {
-        epochs: adv.epochs, batchSize: adv.batch, shuffle: true, validationData: val,
-        callbacks: { onEpochEnd: async function(ep, logs){
-          var a = logs.acc != null ? logs.acc : logs.accuracy, va = logs.val_acc != null ? logs.val_acc : logs.val_accuracy;
-          S.hist.acc.push(a); S.hist.loss.push(logs.loss);
-          if (va != null){ S.hist.vacc.push(va); S.hist.vloss.push(logs.val_loss); }
-          setProg((ep + 1) / adv.epochs, 'Epoche ' + (ep + 1) + ' von ' + adv.epochs + ' · Genauigkeit ' + Math.round((a || 0) * 100) + ' %');
-          if (S.stopReq) m.stopTraining = true;
-          await tf.nextFrame();
-        } }
+      await trainNet(net, P.data, P.val, { epochs: adv.epochs, batch: adv.batch, lr: adv.lr, early: true, stop: function(){ return S.stopReq; } }, function(ep, m){
+        S.hist.acc.push(m.acc); S.hist.loss.push(m.loss);
+        if (m.vacc != null){ S.hist.vacc.push(m.vacc); S.hist.vloss.push(m.vloss); }
+        setProg((ep + 1) / adv.epochs, 'Runde ' + (ep + 1) + ' von ' + adv.epochs + ' · richtig ' + Math.round(m.acc * 100) + ' %');
       });
     } catch (e) { console.warn(e); toast('Beim Trainieren ist ein Fehler aufgetreten.'); }
-    xs.dispose(); ys.dispose(); if (val){ val[0].dispose(); val[1].dispose(); }
     if (S.head){ S.head.dispose(); }
-    S.head = m; S.mu = mu; S.sigma = sigma; S.classOrder = act.map(function(c){ return c.id; });
-    S.test = { X: Xte.map(norm), Y: Yte }; S.norm = norm;
+    S.head = net; S.mu = P.mu; S.sigma = P.sigma; S.classOrder = P.order;
+    S.test = P.test; S.norm = P.norm;
     S.training = false; S.trained = true; S.loaded = false; S.lastWinner = -1; S.announced = -1;
     $('#trainProg').hidden = true; showDone(); refreshTrain(); renderPreview();
   }
@@ -1340,36 +1455,13 @@
   /* ================= Training Runde für Runde ================= */
   // Das Netz wird einmal angelegt. Jeder Tipp übt eine (oder zehn) Runden weiter, und die Vorschau zeigt sofort, wie sicher die KI jetzt ist.
   function initRounds(){
-    var act = active(), C = act.length, dim = S.dim, i;
-    var Xtr = [], Ytr = [], Xte = [], Yte = [];
-    act.forEach(function(c, ci){
-      var idx = shuffle(c.ex.map(function(_, k){ return k; })), n = idx.length;
-      var nt = n >= 6 ? Math.max(1, Math.round(n * 0.15)) : 0;
-      idx.forEach(function(k, j){ if (j < nt){ Xte.push(c.ex[k].f); Yte.push(ci); } else { Xtr.push(c.ex[k].f); Ytr.push(ci); } });
-    });
-    var mu = new Float32Array(dim);
-    Xtr.forEach(function(f){ for (i = 0; i < dim; i++) mu[i] += f[i]; });
-    for (i = 0; i < dim; i++) mu[i] /= Xtr.length;
-    var v = 0; Xtr.forEach(function(f){ for (i = 0; i < dim; i++){ var d = f[i] - mu[i]; v += d * d; } });
-    var sigma = Math.sqrt(v / (Xtr.length * dim)) || 1;
-    function norm(f){ var o = new Float32Array(dim); for (var q = 0; q < dim; q++) o[q] = (f[q] - mu[q]) / sigma; return o; }
-    function flat(arr){ var o = new Float32Array(arr.length * dim); arr.forEach(function(f, k){ o.set(norm(f), k * dim); }); return o; }
-    var xs = tf.tensor2d(flat(Xtr), [Xtr.length, dim]), ys = tf.oneHot(tf.tensor1d(Ytr, 'int32'), C).cast('float32');
-    var val = Xte.length ? [tf.tensor2d(flat(Xte), [Xte.length, dim]), tf.oneHot(tf.tensor1d(Yte, 'int32'), C).cast('float32')] : null;
-    var m = tf.sequential();
-    m.add(tf.layers.dense({ units: 100, activation: 'relu', inputShape: [dim] }));
-    m.add(tf.layers.dense({ units: C, activation: 'softmax' }));
-    m.compile({ optimizer: tf.train.adam(ROUND_LR), loss: 'categoricalCrossentropy', metrics: ['accuracy'] });
-    return { model: m, xs: xs, ys: ys, val: val, norm: norm, mu: mu, sigma: sigma, order: act.map(function(c){ return c.id; }),
-      test: { X: Xte.map(norm), Y: Yte }, epoch: 0, hist: { acc: [], vacc: [], loss: [], vloss: [] } };
-  }
-  function disposeRd(rd){
-    try { rd.xs.dispose(); rd.ys.dispose(); if (rd.val){ rd.val[0].dispose(); rd.val[1].dispose(); } rd.model.dispose(); } catch (e) {}
+    var act = active(), P = prepareData(act);
+    return { net: newNet(S.dim, act.length), data: P.data, val: P.val, norm: P.norm, mu: P.mu, sigma: P.sigma, order: P.order,
+      test: P.test, epoch: 0, hist: { acc: [], vacc: [], loss: [], vloss: [] } };
   }
   function disposeRounds(){
     var rd = S.rd; if (!rd) return;
-    disposeRd(rd);
-    if (S.head === rd.model){ S.head = null; }
+    if (S.head === rd.net){ S.head = null; }
     S.rd = null; S.rdStale = false;
   }
 
@@ -1385,20 +1477,18 @@
     var src, tmp = null;
     if (S.training){ toast('Warte, bis die KI fertig geübt hat.'); return null; }
     if (!S.manual && S.trained && S.head){
-      src = { head: S.head, mu: S.mu, sigma: S.sigma, order: S.classOrder };
+      src = { net: S.head, mu: S.mu, sigma: S.sigma, order: S.classOrder };
     } else if (!trainProblem()){
       toast('Die KI übt kurz für den Export …', 3500);
+      await nextFrame();
       tmp = initRounds();
-      await tmp.model.fit(tmp.xs, tmp.ys, { epochs: 60, batchSize: ROUND_BATCH, shuffle: true });
-      src = { head: tmp.model, mu: tmp.mu, sigma: tmp.sigma, order: tmp.order };
+      await trainNet(tmp.net, tmp.data, null, { epochs: 60, batch: ROUND_BATCH, lr: ROUND_LR }, null);
+      src = { net: tmp.net, mu: tmp.mu, sigma: tmp.sigma, order: tmp.order };
     } else { toast(trainProblem() || 'Trainiere zuerst die KI.'); return null; }
-    var ws = src.head.getWeights(), data = [], i;
-    for (i = 0; i < ws.length; i++) data.push(await ws[i].data());
-    if (tmp) disposeRd(tmp);
     return {
       kind: 'ki-werkstatt-modell', version: 1, art: S.type, mode: S.mode, alpha: ALPHA, dim: S.dim, units: 100,
       klassen: src.order.map(function(id){ var c = byId(id); return c ? c.name : '?'; }),
-      mu: f32b64(src.mu), sigma: src.sigma, w1: f32b64(data[0]), b1: f32b64(data[1]), w2: f32b64(data[2]), b2: f32b64(data[3])
+      mu: f32b64(src.mu), sigma: src.sigma, w1: f32b64(src.net.W1), b1: f32b64(src.net.b1), w2: f32b64(src.net.W2), b2: f32b64(src.net.b2)
     };
   }
   async function exportCopy(){
@@ -1471,10 +1561,8 @@
     S.classes = []; ST.thumbs.innerHTML = ''; sumSig = '';
     p.klassen.forEach(function(nm){ var c = addClass(); c.name = String(nm).slice(0, 24) || c.name; refreshTile(c); });
     selectClass(S.classes[0].id);
-    var dim = p.dim, sigma = p.sigma, m = tf.sequential();
-    m.add(tf.layers.dense({ units: 100, activation: 'relu', inputShape: [dim] }));
-    m.add(tf.layers.dense({ units: C, activation: 'softmax' }));
-    m.setWeights([tf.tensor2d(w1, [dim, 100]), tf.tensor1d(b1), tf.tensor2d(w2, [100, C]), tf.tensor1d(b2)]);
+    var dim = p.dim, sigma = p.sigma, m = newNet(dim, C);
+    m.W1.set(w1); m.b1.set(b1); m.W2.set(w2); m.b2.set(b2);
     S.head = m; S.mu = mu; S.sigma = sigma;
     S.norm = function(f){ var o = new Float32Array(dim); for (var q = 0; q < dim; q++) o[q] = (f[q] - mu[q]) / sigma; return o; };
     S.classOrder = S.classes.map(function(c){ return c.id; });
@@ -1509,18 +1597,15 @@
     if (S.training || !S.rounds || trainProblem()) return;
     if (!S.rd) S.rd = initRounds();
     var rd = S.rd; S.rdNote = ''; S.training = true; refreshRounds();
+    await nextFrame();                       // Erst die Anzeige „Die KI übt …“ zeichnen lassen
     try {
-      await rd.model.fit(rd.xs, rd.ys, {
-        epochs: n, batchSize: ROUND_BATCH, shuffle: true, validationData: rd.val,
-        callbacks: { onEpochEnd: async function(ep, logs){
-          var a = logs.acc != null ? logs.acc : logs.accuracy, va = logs.val_acc != null ? logs.val_acc : logs.val_accuracy;
-          rd.epoch++; rd.hist.acc.push(a); rd.hist.loss.push(logs.loss);
-          if (va != null){ rd.hist.vacc.push(va); rd.hist.vloss.push(logs.val_loss); }
-          S.hist = rd.hist; refreshRounds(); await tf.nextFrame();
-        } }
+      await trainNet(rd.net, rd.data, rd.val, { epochs: n, batch: ROUND_BATCH, lr: ROUND_LR }, function(ep, m){
+        rd.epoch++; rd.hist.acc.push(m.acc); rd.hist.loss.push(m.loss);
+        if (m.vacc != null){ rd.hist.vacc.push(m.vacc); rd.hist.vloss.push(m.vloss); }
+        S.hist = rd.hist; refreshRounds();
       });
     } catch (e) { console.warn(e); toast('Beim Üben ist ein Fehler aufgetreten.'); }
-    S.head = rd.model; S.mu = rd.mu; S.sigma = rd.sigma; S.norm = rd.norm; S.classOrder = rd.order; S.test = rd.test; S.hist = rd.hist;
+    S.head = rd.net; S.mu = rd.mu; S.sigma = rd.sigma; S.norm = rd.norm; S.classOrder = rd.order; S.test = rd.test; S.hist = rd.hist;
     var first = !S.trained;
     S.training = false; S.trained = true; S.loaded = false; S.lastWinner = -1; S.announced = -1;
     if (S.rdStale){ disposeRounds(); S.trained = false; S.rdNote = 'Neue Beispiele: Die KI fängt wieder von vorn an.'; renderPreview(); }
@@ -1592,10 +1677,7 @@
     else cov.hidden = true;
   }
   async function startPvCamera(){ var ok = await ensureCamera(); if (ok) refreshPvCover(); }
-  function predict(f){
-    var t = tf.tidy(function(){ return S.head.predict(tf.tensor2d(S.norm(f), [1, S.dim])); });
-    return t.data().then(function(d){ t.dispose(); return d; });
-  }
+  function predict(f){ return Promise.resolve(netPredict(S.head, S.norm(f))); }
   function renderProbs(p){
     var rows = document.querySelectorAll('#bars .row'), best = -1, bp = -1;
     p.forEach(function(v, i){ if (v > bp){ bp = v; best = i; } });
@@ -1687,9 +1769,7 @@
     lineChart($('#chLoss'), [{ d: H.loss, c: '#4e5a7d' }, { d: H.vloss, c: '#e31274' }], 'Verlust pro Epoche');
     function testPreds(){
       var X = S.test.X, Y = S.test.Y; if (!X.length) return Promise.resolve(null);
-      var o = new Float32Array(X.length * S.dim); X.forEach(function(f, i){ o.set(f, i * S.dim); });
-      var t = tf.tidy(function(){ return S.head.predict(tf.tensor2d(o, [X.length, S.dim])).argMax(1); });
-      return t.data().then(function(d){ t.dispose(); return { pred: Array.prototype.slice.call(d), y: Y }; });
+      return Promise.resolve({ pred: X.map(function(f){ return netBest(S.head, f); }), y: Y });
     }
     $('#btnAccCls').addEventListener('click', async function(){
       var r = await testPreds(); var out = $('#accOut');
@@ -1731,7 +1811,7 @@
       '<li><b>Posen:</b> Stell das iPad auf und tritt so weit zurück, dass Kopf, Arme und Oberkörper im Bild sind. Mit dem „Timer“ gibt es einen Countdown, und die Serie startet von selbst.</li>' +
       '<li><b>Klappt es nicht?</b> Probiere die KI bei anderem Licht oder Hintergrund aus und nimm dann mehr Beispiele auf.</li>' +
       '<li><b>Modell behalten:</b> Im Menü oder bei „Ausprobieren“ unter „Speichern &amp; Laden“ kannst du dein Modell herunterladen und später wieder hochladen.</li></ul>' +
-      '<p class="note">Die KI-Werkstatt ist dem Werkzeug „Teachable Machine“ nachempfunden, aber nicht mit Google verbunden und nur zu Bildungszwecken gebaut. Die Bilder bleiben auf deinem Gerät. Beim Start eines Projekts lädt die Seite Programme und ein fertiges Erkennungsmodell aus dem Internet. Mehr dazu unter „Info, Lizenzen und Datenschutz“ im Menü.</p>' +
+      '<p class="note">Die KI-Werkstatt ist nicht mit Google verbunden und nur zu Bildungszwecken gebaut. Die Bilder bleiben auf deinem Gerät. Beim Start eines Projekts lädt die Seite Programme und ein fertiges Erkennungsmodell aus dem Internet. Mehr dazu unter „Info, Lizenzen und Datenschutz“ im Menü.</p>' +
       '<button class="btn" type="button" data-close>Verstanden</button>');
   }
   // Modell speichern (Download), laden (Upload) und an Scratch geben
@@ -1782,7 +1862,6 @@
       { t: 'MINT2Go: Logo, Farben, Schriftzug „MINT erleben“', b: 'Rechte bei MINT2Go', d: 'Logo und Erscheinungsbild gehören MINT2Go. Als Schrift wird die auf dem Gerät vorhandene Systemschrift verwendet (zum Beispiel Avenir Next). Es wird keine Schriftdatei ausgeliefert.', l: [] },
       { t: 'Symbole (Material Icons)', b: 'Apache-2.0', d: 'Die kleinen Symbole in der App (Kamera, Stift, Pfeile, Menü und andere) stammen aus den Material Icons von Google, © Google LLC. Eine Namensnennung ist nicht vorgeschrieben, wir nennen sie trotzdem.',
         l: [['Lizenztext', 'https://github.com/google/material-design-icons/blob/master/LICENSE']] },
-      { t: 'Teachable Machine (Google)', b: 'Marke von Google', d: 'Der Aufbau (Klassen, Training, Vorschau) ist dem Werkzeug „Teachable Machine“ nachempfunden. Es wird kein Programmcode, kein Logo und keine Grafik von dort übernommen. Die KI-Werkstatt ist nicht mit Teachable Machine oder Google verbunden und nur zu Bildungszwecken gebaut.', l: [] },
       { t: 'Quelltext der KI-Werkstatt und der Scratch-Erweiterung', b: 'Rechte beim Betreiber', d: 'Der selbst geschriebene Quelltext ist (noch) nicht unter einer Open-Source-Lizenz freigegeben.', l: [] }
     ] },
     { g: 'Scratch (nur wenn die Erweiterung genutzt wird)', items: [
@@ -1797,7 +1876,7 @@
     var h = '<div class="top"><h2>Info, Lizenzen und Datenschutz</h2><button class="iconbtn" type="button" data-close aria-label="Schließen">' + icon('close') + '</button></div>' +
       '<p class="note">Stand: 13. November 2026. Die Angaben beruhen auf den verlinkten Quellen. Maßgeblich sind immer die Texte der Anbieter.</p>' +
       '<h3>Was ist die KI-Werkstatt?</h3>' +
-      '<p>Ein Bildungsprojekt im Design von MINT2Go, in dem Kinder eine kleine KI selbst trainieren. Sie ist <b>nicht mit Teachable Machine oder Google verbunden</b> und wurde <b>nur zu Bildungszwecken</b> gebaut. Sie wird ohne Gewähr bereitgestellt, und die KI kann Fehler machen.</p>' +
+      '<p>Ein Bildungsprojekt im Design von MINT2Go, in dem Kinder eine kleine KI selbst trainieren. Sie ist <b>nicht mit Google verbunden</b> und wurde <b>nur zu Bildungszwecken</b> gebaut. Sie wird ohne Gewähr bereitgestellt, und die KI kann Fehler machen.</p>' +
       '<h3>Datenschutz</h3>' +
       '<ul><li><b>Bleibt auf dem Gerät:</b> Kamerabilder, Beispiele, Klassennamen und trainierte KIs. Die Seite sendet nichts davon ins Internet, speichert nichts im Browser und setzt keine Cookies.</li>' +
       '<li><b>Speichern und Laden:</b> „Modell herunterladen“ legt eine Datei auf dem Gerät an. Sie enthält die Klassen und das Gelernte, aber keine Bilder. „Modell hochladen“ liest eine solche Datei nur auf dem Gerät. Die Seite verschickt die Datei nicht.</li>' +
@@ -1936,7 +2015,7 @@
   setInterval(updateRecUI, 150);
   loop();
 
-  window.__ki = { loadModelFile: loadModelFile, importModel: importModel, goStep: goStep, selectClass: selectClass, fitSquares: fitSquares, S: S, addClass: addClass, extract: extract, train: train, startProject: startProject, addExample: addExample, beginRec: beginRec, setMode: setMode, roundStep: roundStep, teach: teach, knnProbs: knnProbs, buildExport: buildExport, poseFeat: poseFeat, predict: predict };
+  window.__ki = { trainNet: trainNet, newNet: newNet, prepareData: prepareData, netPredict: netPredict, loadModelFile: loadModelFile, importModel: importModel, goStep: goStep, selectClass: selectClass, fitSquares: fitSquares, S: S, addClass: addClass, extract: extract, train: train, startProject: startProject, addExample: addExample, beginRec: beginRec, setMode: setMode, roundStep: roundStep, teach: teach, knnProbs: knnProbs, buildExport: buildExport, poseFeat: poseFeat, predict: predict };
 })();
 </script>
 </body>
