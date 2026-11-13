@@ -1780,20 +1780,22 @@
     ] },
     { g: 'Design, Marken und Quelltext', items: [
       { t: 'MINT2Go: Logo, Farben, Schriftzug „MINT erleben“', b: 'Rechte bei MINT2Go', d: 'Logo und Erscheinungsbild gehören MINT2Go. Als Schrift wird die auf dem Gerät vorhandene Systemschrift verwendet (zum Beispiel Avenir Next). Es wird keine Schriftdatei ausgeliefert.', l: [] },
+      { t: 'Symbole (Material Icons)', b: 'Apache-2.0', d: 'Die kleinen Symbole in der App (Kamera, Stift, Pfeile, Menü und andere) stammen aus den Material Icons von Google, © Google LLC. Eine Namensnennung ist nicht vorgeschrieben, wir nennen sie trotzdem.',
+        l: [['Lizenztext', 'https://github.com/google/material-design-icons/blob/master/LICENSE']] },
       { t: 'Teachable Machine (Google)', b: 'Marke von Google', d: 'Der Aufbau (Klassen, Training, Vorschau) ist dem Werkzeug „Teachable Machine“ nachempfunden. Es wird kein Programmcode, kein Logo und keine Grafik von dort übernommen. Die KI-Werkstatt ist nicht mit Teachable Machine oder Google verbunden und nur zu Bildungszwecken gebaut.', l: [] },
       { t: 'Quelltext der KI-Werkstatt und der Scratch-Erweiterung', b: 'Rechte beim Betreiber', d: 'Der selbst geschriebene Quelltext ist (noch) nicht unter einer Open-Source-Lizenz freigegeben.', l: [] }
     ] },
     { g: 'Scratch (nur wenn die Erweiterung genutzt wird)', items: [
       { t: 'TurboWarp (turbowarp.org)', b: 'GPL-3.0', d: 'Open-Source-Mod von Scratch. Die Änderungen von TurboWarp stehen unter GPL-3.0, der ursprüngliche Scratch-Code behält seine Lizenz. Eigene Erweiterungen lädt TurboWarp nur nach einer Rückfrage. Das Modell wird im Browser auf dem Gerät gespeichert.',
         l: [['Quelltext und Lizenz', 'https://github.com/TurboWarp/scratch-gui'], ['Datenschutz von TurboWarp', 'https://turbowarp.org/privacy.html']] },
-      { t: 'Scratch', b: 'Marke', d: 'Der Name „Scratch“ wird nur zur Beschreibung genannt, ohne Logo. Scratch ist ein Projekt der Scratch Foundation, Name und Logo sind markenrechtlich geschützt. Projekte mit eigenen Erweiterungen lassen sich nicht auf scratch.mit.edu hochladen.',
-        l: [['scratchfoundation.org', 'https://www.scratchfoundation.org/']] }
+      { t: 'Scratch', b: 'Marke', d: 'Der Name „Scratch“ wird nur beschreibend genannt, ohne Logo. Die KI-Werkstatt ist nicht mit der Scratch Foundation verbunden und wird von ihr nicht unterstützt. Scratch ist ein Projekt der Scratch Foundation, Name und Logo sind markenrechtlich geschützt. Projekte mit eigenen Erweiterungen lassen sich nicht auf scratch.mit.edu hochladen.',
+        l: [['Markenrichtlinie von Scratch', 'https://mitscratch.freshdesk.com/en/support/solutions/articles/4000232107-scratch-trademark-guidelines'], ['scratchfoundation.org', 'https://www.scratchfoundation.org/']] }
     ] }
   ];
   function esc(s){ return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   function openInfo(){
     var h = '<div class="top"><h2>Info, Lizenzen und Datenschutz</h2><button class="iconbtn" type="button" data-close aria-label="Schließen">' + icon('close') + '</button></div>' +
-      '<p class="note">Stand: 12. November 2026. Die Angaben beruhen auf den verlinkten Quellen. Maßgeblich sind immer die Texte der Anbieter.</p>' +
+      '<p class="note">Stand: 13. November 2026. Die Angaben beruhen auf den verlinkten Quellen. Maßgeblich sind immer die Texte der Anbieter.</p>' +
       '<h3>Was ist die KI-Werkstatt?</h3>' +
       '<p>Ein Bildungsprojekt im Design von MINT2Go, in dem Kinder eine kleine KI selbst trainieren. Sie ist <b>nicht mit Teachable Machine oder Google verbunden</b> und wurde <b>nur zu Bildungszwecken</b> gebaut. Sie wird ohne Gewähr bereitgestellt, und die KI kann Fehler machen.</p>' +
       '<h3>Datenschutz</h3>' +

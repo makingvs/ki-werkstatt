@@ -18,6 +18,7 @@
 // nicht-kommerzielle Forschung und Bildung erlauben. Alle Angaben mit Quellen in der KI-Werkstatt unter
 // Menü → „Info, Lizenzen und Datenschutz“ (https://makingvs.github.io/ki-werkstatt/#info).
 // Der Quelltext dieser Erweiterung ist (noch) nicht unter einer Open-Source-Lizenz freigegeben.
+// Diese Erweiterung ist nicht mit der Scratch Foundation oder TurboWarp verbunden und wird von ihnen nicht unterstützt.
 
 (function (Scratch) {
   'use strict';
